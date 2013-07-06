@@ -66,12 +66,12 @@ abstract class MethodHandler {
     }
 
     @Override protected Object decode(Object[] argv, Response response) throws Throwable {
-      if (metadata.returnType().equals(Response.class)) {
+      if (metadata.decodeInto().equals(Response.class)) {
         return response;
-      } else if (metadata.returnType() == void.class) {
+      } else if (metadata.decodeInto() == void.class) {
         return null;
       }
-      return decoder.decode(response, metadata.returnType());
+      return decoder.decode(response, metadata.decodeInto());
     }
   }
 

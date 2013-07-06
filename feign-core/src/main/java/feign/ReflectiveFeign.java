@@ -142,7 +142,7 @@ public class ReflectiveFeign extends Feign {
         }
         Decoder decoder = forMethodOrClass(decoders, md.configKey());
         if (decoder == null
-            && (md.returnType() == void.class || md.returnType() == Response.class)) {
+            && (md.decodeInto() == void.class || md.decodeInto() == Response.class)) {
           decoder = new StringDecoder();
         }
         if (decoder == null) {

@@ -17,11 +17,13 @@ package feign;
 
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
+import java.lang.reflect.Type;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
+import javax.inject.Inject;
 import javax.inject.Named;
 
 import static feign.Util.checkState;
@@ -31,6 +33,12 @@ import static feign.Util.emptyToNull;
  * Defines what annotations and values are valid on interfaces.
  */
 public abstract class Contract {
+
+  private final TypeQuery typeQuery;
+
+  protected Contract(TypeQuery typeQuery) {
+    this.typeQuery = typeQuery;
+  }
 
   /**
    * Called to parse the methods in the class that are linked to HTTP requests.
@@ -50,7 +58,7 @@ public abstract class Contract {
    */
   public MethodMetadata parseAndValidatateMetadata(Method method) {
     MethodMetadata data = new MethodMetadata();
-    data.returnType(method.getGenericReturnType());
+    data.decodeInto(method.getGenericReturnType());
     data.configKey(Feign.configKey(method));
 
     for (Annotation methodAnnotation : method.getAnnotations()) {
@@ -69,8 +77,17 @@ public abstract class Contract {
       }
       if (parameterTypes[i] == URI.class) {
         data.urlIndex(i);
+      } else if (Observer.class.isAssignableFrom(parameterTypes[i])) {
+        checkState(method.getReturnType() == void.class, "Observer methods must return void: %s", method);
+        checkState(i == count - 1, "Observer must be the last parameter: %s", method);
+        Type context = method.getGenericParameterTypes()[i];
+        Type observerType = typeQuery.firstParameterOfSupertype(context, parameterTypes[i], Observer.class);
+        data.decodeInto(observerType);
+        data.observerIndex(i);
+        checkState(observerType != null, "Expected param %s to be Observer<X> or Observer<? super X> or a subtype",
+            context, observerType);
       } else if (!isHttpAnnotation) {
-        checkState(data.formParams().isEmpty(), "Body parameters cannot be used with @FormParam parameters.");
+        checkState(data.formParams().isEmpty(), "Body parameters cannot be used with form parameters.");
         checkState(data.bodyIndex() == null, "Method has too many Body parameters: %s", method);
         data.bodyIndex(i);
       }
@@ -112,7 +129,11 @@ public abstract class Contract {
     data.indexToName().put(i, names);
   }
 
-  static class DefaultContract extends Contract {
+  static class Default extends Contract {
+
+    @Inject Default(TypeQuery typeQuery) {
+      super(typeQuery);
+    }
 
     @Override
     protected void processAnnotationOnMethod(MethodMetadata data, Annotation methodAnnotation, Method method) {

@@ -24,7 +24,9 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.lang.reflect.Type;
 import java.net.URI;
+import java.util.List;
 
 import javax.ws.rs.DELETE;
 import javax.ws.rs.FormParam;
@@ -40,7 +42,9 @@ import javax.ws.rs.QueryParam;
 
 import feign.Body;
 import feign.MethodMetadata;
+import feign.Observer;
 import feign.Response;
+import feign.TypeQuery;
 
 import static feign.jaxrs.JAXRSModule.CONTENT_TYPE;
 import static javax.ws.rs.HttpMethod.DELETE;
@@ -60,7 +64,7 @@ import static org.testng.Assert.assertTrue;
  */
 @Test
 public class JAXRSContractTest {
-  JAXRSModule.JAXRSContract contract = new JAXRSModule.JAXRSContract();
+  JAXRSModule.JAXRSContract contract = new JAXRSModule.JAXRSContract(new TypeQuery.Default());
 
   interface Methods {
     @POST void post();
@@ -238,5 +242,46 @@ public class JAXRSContractTest {
 
     assertEquals(md.template().headers().get("Auth-Token"), ImmutableSet.of("{Auth-Token}"));
     assertEquals(md.indexToName().get(0), ImmutableSet.of("Auth-Token"));
+  }
+
+  interface WithObserver {
+    @GET @Path("/") void valid(Observer<List<String>> one);
+
+    @GET @Path("/{path}") void badOrder(Observer<List<String>> one, @PathParam("path") String path);
+
+    @GET @Path("/") Response returnType(Observer<List<String>> one);
+
+    @GET @Path("/") void wildcardExtends(Observer<? extends List<String>> one);
+
+    @GET @Path("/") void subtype(ParameterizedObserver<List<String>> one);
+  }
+
+  static final List<String> listString = null;
+
+  interface ParameterizedObserver<T extends List<String>> extends Observer<T> {
+  }
+
+  @Test public void methodCanHaveObserverParam() throws Exception {
+    contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("valid", Observer.class));
+  }
+
+  @Test public void methodMetadataReturnTypeOnObservableMethodIsItsTypeParameter() throws Exception {
+    Type listStringType = getClass().getDeclaredField("listString").getGenericType();
+    MethodMetadata md = contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("valid", Observer.class));
+    assertEquals(md.decodeInto(), listStringType);
+    md = contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("wildcardExtends", Observer.class));
+    assertEquals(md.decodeInto(), listStringType);
+    md = contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("subtype", ParameterizedObserver.class));
+    assertEquals(md.decodeInto(), listStringType);
+  }
+
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*the last parameter.*")
+  public void observerParamMustBeLast() throws Exception {
+    contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("badOrder", Observer.class, String.class));
+  }
+
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*must return void.*")
+  public void observerMethodMustReturnVoid() throws Exception {
+    contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("returnType", Observer.class));
   }
 }

@@ -24,12 +24,14 @@ import java.util.List;
 import java.util.Map;
 
 public final class MethodMetadata implements Serializable {
+
   MethodMetadata() {
   }
 
   private String configKey;
-  private transient Type returnType;
+  private transient Type decodeInto;
   private Integer urlIndex;
+  private Integer observerIndex;
   private Integer bodyIndex;
   private RequestTemplate template = new RequestTemplate();
   private List<String> formParams = new ArrayList<String>();
@@ -47,12 +49,16 @@ public final class MethodMetadata implements Serializable {
     return this;
   }
 
-  public Type returnType() {
-    return returnType;
+  /**
+   * Method return type unless there is an {@link Observer} arg.  In this case, it is the type parameter of the
+   * observer.
+   */
+  public Type decodeInto() {
+    return decodeInto;
   }
 
-  MethodMetadata returnType(Type returnType) {
-    this.returnType = returnType;
+  MethodMetadata decodeInto(Type decodeInto) {
+    this.decodeInto = decodeInto;
     return this;
   }
 
@@ -62,6 +68,15 @@ public final class MethodMetadata implements Serializable {
 
   MethodMetadata urlIndex(Integer urlIndex) {
     this.urlIndex = urlIndex;
+    return this;
+  }
+
+  public Integer observerIndex() {
+    return observerIndex;
+  }
+
+  MethodMetadata observerIndex(Integer observerIndex) {
+    this.observerIndex = observerIndex;
     return this;
   }
 
@@ -87,4 +102,5 @@ public final class MethodMetadata implements Serializable {
   }
 
   private static final long serialVersionUID = 1L;
+
 }

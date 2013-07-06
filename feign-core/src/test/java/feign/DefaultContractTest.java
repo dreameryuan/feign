@@ -20,7 +20,9 @@ import com.google.common.collect.ImmutableSet;
 
 import org.testng.annotations.Test;
 
+import java.lang.reflect.Type;
 import java.net.URI;
+import java.util.List;
 
 import javax.inject.Named;
 
@@ -30,13 +32,13 @@ import static org.testng.Assert.assertNull;
 import static org.testng.Assert.assertTrue;
 
 /**
- * Tests interfaces defined per {@link feign.Contract.DefaultContract} are interpreted into expected {@link feign
+ * Tests interfaces defined per {@link feign.Contract.Default} are interpreted into expected {@link feign
  * .RequestTemplate template}
  * instances.
  */
 @Test
 public class DefaultContractTest {
-  Contract.DefaultContract contract = new Contract.DefaultContract();
+  Contract.Default contract = new Contract.Default(new TypeQuery.Default());
 
   interface Methods {
     @RequestLine("POST /") void post();
@@ -214,5 +216,46 @@ public class DefaultContractTest {
 
     assertEquals(md.template().headers().get("Auth-Token"), ImmutableSet.of("{Auth-Token}"));
     assertEquals(md.indexToName().get(0), ImmutableSet.of("Auth-Token"));
+  }
+
+  interface WithObserver {
+    @RequestLine("GET /") void valid(Observer<List<String>> one);
+
+    @RequestLine("GET /{path}") void badOrder(Observer<List<String>> one, @Named("path") String path);
+
+    @RequestLine("GET /") Response returnType(Observer<List<String>> one);
+
+    @RequestLine("GET /") void wildcardExtends(Observer<? extends List<String>> one);
+
+    @RequestLine("GET /") void subtype(ParameterizedObserver<List<String>> one);
+  }
+
+  static final List<String> listString = null;
+
+  interface ParameterizedObserver<T extends List<String>> extends Observer<T> {
+  }
+
+  @Test public void methodCanHaveObserverParam() throws Exception {
+    contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("valid", Observer.class));
+  }
+
+  @Test public void methodMetadataReturnTypeOnObservableMethodIsItsTypeParameter() throws Exception {
+    Type listStringType = getClass().getDeclaredField("listString").getGenericType();
+    MethodMetadata md = contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("valid", Observer.class));
+    assertEquals(md.decodeInto(), listStringType);
+    md = contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("wildcardExtends", Observer.class));
+    assertEquals(md.decodeInto(), listStringType);
+    md = contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("subtype", ParameterizedObserver.class));
+    assertEquals(md.decodeInto(), listStringType);
+  }
+
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*the last parameter.*")
+  public void observerParamMustBeLast() throws Exception {
+    contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("badOrder", Observer.class, String.class));
+  }
+
+  @Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*must return void.*")
+  public void observerMethodMustReturnVoid() throws Exception {
+    contract.parseAndValidatateMetadata(WithObserver.class.getDeclaredMethod("returnType", Observer.class));
   }
 }

@@ -80,8 +80,9 @@ public abstract class Feign {
 
   @dagger.Module(complete = false, injects = Feign.class, library = true)
   public static class Defaults {
+
     @Provides Contract contract() {
-      return new Contract.DefaultContract();
+      return new Contract.Default(new TypeQuery.Default());
     }
 
     @Provides SSLSocketFactory sslSocketFactory() {

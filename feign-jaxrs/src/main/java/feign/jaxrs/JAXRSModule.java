@@ -32,6 +32,7 @@ import dagger.Provides;
 import feign.Body;
 import feign.Contract;
 import feign.MethodMetadata;
+import feign.TypeQuery;
 
 import static feign.Util.checkState;
 
@@ -44,7 +45,15 @@ public final class JAXRSModule {
     return new JAXRSContract();
   }
 
-  static final class JAXRSContract extends Contract {
+  public static final class JAXRSContract extends Contract {
+
+    public JAXRSContract(TypeQuery typeQuery) {
+      super(typeQuery);
+    }
+
+    public JAXRSContract() {
+      super(new TypeQuery.Default());
+    }
 
     @Override
     protected void processAnnotationOnMethod(MethodMetadata data, Annotation methodAnnotation, Method method) {
