@@ -23,17 +23,21 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.concurrent.Executor;
 
 import javax.inject.Inject;
+import javax.inject.Named;
 
+import dagger.Lazy;
 import dagger.Provides;
-import feign.MethodHandler.Factory;
 import feign.Request.Options;
 import feign.codec.BodyEncoder;
 import feign.codec.Decoder;
 import feign.codec.ErrorDecoder;
 import feign.codec.FormEncoder;
+import feign.codec.ObserverDecoder;
 import feign.codec.StringDecoder;
+import feign.codec.StringObserverDecoder;
 
 import static feign.Util.checkArgument;
 import static feign.Util.checkNotNull;
@@ -44,7 +48,8 @@ public class ReflectiveFeign extends Feign {
 
   private final ParseHandlersByName targetToHandlersByName;
 
-  @Inject ReflectiveFeign(ParseHandlersByName targetToHandlersByName) {
+  @Inject ReflectiveFeign(@Named("http") Lazy<Executor> httpExecutor, ParseHandlersByName targetToHandlersByName) {
+    super(httpExecutor);
     this.targetToHandlersByName = targetToHandlersByName;
   }
 
@@ -117,19 +122,22 @@ public class ReflectiveFeign extends Feign {
     private final Map<String, BodyEncoder> bodyEncoders;
     private final Map<String, FormEncoder> formEncoders;
     private final Map<String, Decoder> decoders;
+    private final Map<String, ObserverDecoder> observerDecoders;
     private final Map<String, ErrorDecoder> errorDecoders;
-    private final Factory factory;
+    private final MethodHandler.Factory factory;
 
     @Inject ParseHandlersByName(Contract contract, Map<String, Options> options, Map<String, BodyEncoder> bodyEncoders,
                                 Map<String, FormEncoder> formEncoders, Map<String, Decoder> decoders,
-                                Map<String, ErrorDecoder> errorDecoders, Factory factory) {
+                                Map<String, ObserverDecoder> observerDecoders, Map<String, ErrorDecoder> errorDecoders,
+                                MethodHandler.Factory factory) {
       this.contract = contract;
       this.options = options;
       this.bodyEncoders = bodyEncoders;
       this.formEncoders = formEncoders;
       this.decoders = decoders;
-      this.factory = factory;
+      this.observerDecoders = observerDecoders;
       this.errorDecoders = errorDecoders;
+      this.factory = factory;
     }
 
     public Map<String, MethodHandler> apply(Target key) {
@@ -139,14 +147,6 @@ public class ReflectiveFeign extends Feign {
         Options options = forMethodOrClass(this.options, md.configKey());
         if (options == null) {
           options = new Options();
-        }
-        Decoder decoder = forMethodOrClass(decoders, md.configKey());
-        if (decoder == null
-            && (md.decodeInto() == void.class || md.decodeInto() == Response.class)) {
-          decoder = new StringDecoder();
-        }
-        if (decoder == null) {
-          throw noConfig(md.configKey(), Decoder.class);
         }
         ErrorDecoder errorDecoder = forMethodOrClass(errorDecoders, md.configKey());
         if (errorDecoder == null) {
@@ -168,8 +168,31 @@ public class ReflectiveFeign extends Feign {
         } else {
           buildTemplate = new BuildTemplateByResolvingArgs(md);
         }
-        result.put(md.configKey(),
-            factory.create(key, md, buildTemplate, options, decoder, errorDecoder));
+
+        if (md.observerIndex() == null) {
+          Decoder decoder = forMethodOrClass(decoders, md.configKey());
+          if (decoder == null
+              && (md.decodeInto() == void.class || md.decodeInto() == Response.class)) {
+            decoder = new StringDecoder();
+          }
+          if (decoder == null) {
+            throw noConfig(md.configKey(), Decoder.class);
+          }
+          result.put(md.configKey(),
+              factory.create(key, md, buildTemplate, options, decoder, errorDecoder));
+        } else {
+          ObserverDecoder<?> observerDecoder = forMethodOrClass(observerDecoders, md.configKey());
+          if (observerDecoder == null
+              && (md.decodeInto() == Void.class || md.decodeInto() == String.class
+              || md.decodeInto() == Response.class)) {
+            observerDecoder = new StringObserverDecoder();
+          }
+          if (observerDecoder == null) {
+            throw noConfig(md.configKey(), ObserverDecoder.class);
+          }
+          result.put(md.configKey(),
+              factory.create(key, md, buildTemplate, options, observerDecoder, errorDecoder));
+        }
       }
       return result;
     }
